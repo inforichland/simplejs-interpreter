@@ -27,7 +27,6 @@ function dump( t, indent )
    end
 end
 
-
 -- arity: unary, binary, ternary, name, function, literal, this, statement
 
 -- runtime-specific variables - not modifiable during runtime (?)
@@ -43,7 +42,7 @@ local fixed_escapes = {
    [ '\\t' ] = '\t',
 }
 local function fix_escapes( str )
-   local s,_ = string.gsub( str, "\\[nrt]", fixed_escapes )
+   local s, _ = string.gsub( str, "\\[nrt]", fixed_escapes )
    return s
 end
 
@@ -99,19 +98,21 @@ end
 
 -- evaluate arguments for operators
 function eval_op_args( tree )
+   results = nil
    if tree.arity == 'binary' then
       local arg1 = evaluate_args{ tree.first }
       local arg2 = evaluate_args{ tree.second }
-      return { arg1, arg2 }
+      results = { arg1, arg2 }
    elseif tree.arity == 'unary' then
       local arg = evaluate_args{ tree.first }
-      return { arg1 }
+      results = { arg }
    elseif tree.arity == 'ternary' then
       local arg1 = evaluate_args{ tree.first }
       local arg2 = evaluate_args{ tree.second }
       local arg3 = evaluate_args{ tree.third }
-      return { arg1, arg2, arg3 }
+      results = { arg1, arg2, arg3 }
    end
+   return results
 end
 
 local function shallow_copy_table( t )
@@ -126,15 +127,15 @@ end
 local function interpret_func( func, args )
    -- create new environment for bindings
    m_env = m_env:create()
-   -- fill in bindings
 
+   -- check function's arity vs. # of arguments passed
    if #func.args ~= #args then
       error( 'Wrong number of arguments to function' )
    end
 
    -- bind arguments
    local evaled_args = evaluate_args( args )
-   for i,v in ipairs( evaled_args ) do
+   for i, v in ipairs( evaled_args ) do
       m_env:bind( func.args[ i ].value, v )
    end
 
@@ -161,6 +162,22 @@ local function interp_handler_binary( f )
 end
 
 local interp_handlers = {
+   [ 'if' ] =
+      function( tree )
+	 -- determine truthiness
+	 local result = interpret( tree.first )
+
+	 -- TODO: make if an expression, not just a statement!
+
+	 if result then
+	 -- if true, execute 'then' statement
+	    interpret( tree.second )
+	 elseif tree.third then
+	    -- if not true, and there is an 'else', execute the else
+	    interpret( tree.third )
+	 end
+      end,
+
    [ 'return' ] =
       function( tree )
          local result = evaluate_args{ tree.first }
@@ -219,10 +236,29 @@ local interp_handlers = {
          end
       end,
 
+   -- binary operators
    [ '+' ] = interp_handler_binary( function( a, b ) return a + b end ),
-   [ '-' ] = interp_handler_binary( function( a, b ) return a - b end ),
    [ '*' ] = interp_handler_binary( function( a, b ) return a * b end ),
    [ '/' ] = interp_handler_binary( function( a, b ) return a / b end ),
+   [ '>' ] = interp_handler_binary( function( a, b ) return a > b end ),
+   [ '<' ] = interp_handler_binary( function( a, b ) return a < b end ),
+   [ '>=' ] = interp_handler_binary( function( a, b ) return a >= b end ),
+   [ '<=' ] = interp_handler_binary( function( a, b ) return a <= b end ),
+   [ '==' ] = interp_handler_binary( function( a, b ) return a == b end ),
+   [ '!=' ] = interp_handler_binary( function( a, b ) return a ~= b end ),
+
+   -- can be binary or unary
+   [ '-' ] = function( tree )
+      local evaled_args = eval_op_args( tree )
+      if #evaled_args == 2 then
+	 local arg1, arg2 = evaled_args[ 1 ][ 1 ], evaled_args[ 2 ][ 1 ]
+	 return arg1 - arg2
+      elseif #evaled_args == 1 then
+	 return -evaled_args[ 1 ][ 1 ]
+      else
+	 error( string.format( 'Wrong number of args %d', #evaled_args ) )
+      end
+   end,
 }
 
 -- interpret a parse tree
@@ -233,6 +269,7 @@ interpret = function( tree )
    if table.maxn( tree ) == 0 then
       local value = tree.value
 
+      -- find the handler for this parse tree
       local handler = interp_handlers[ value ]
       if handler then
          ret = handler( tree )
@@ -240,6 +277,7 @@ interpret = function( tree )
          error( string.format( 'Invalid parse tree for %s', value )  )
       end
    else
+      -- interpret each statement individually, and return the last value
       for _, stmt in ipairs( tree ) do
          ret = interpret( stmt )
       end

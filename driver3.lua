@@ -43,9 +43,9 @@ end
 
 do
   local res = test_interp( [[
+var a = 42 * 3;
 var greet = function( name ) { print( "Greetings, ", name, "\n" ); };
 var foo = function( blah ) { print( "foo ", blah ); println( " THIS IS A TEST" ); };
-var a = 42 * 3;
 var str = "Hello, world!\n";
 println( "A is ", a );
 a = a + 7;
@@ -57,5 +57,7 @@ var _ = function( f, t ) { f( t ); };
 _( foo, "thingy" );
 var abc = function() { return 42; };
 println( "abc() + a = ", abc() + a );
+var b = 100;
+if( a > b ) { println( "A is greater than ", b ); } else { println( "A is less than ", b ); }
 ]] )
 end
